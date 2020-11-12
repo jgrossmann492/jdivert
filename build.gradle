@@ -8,7 +8,7 @@ apply plugin: 'jacoco'
 apply plugin: 'maven'
 apply plugin: 'signing'
 
-sourceCompatibility = 1.6
+sourceCompatibility = 1.8
 
 repositories {
     mavenCentral()
@@ -65,25 +65,17 @@ uploadArchives {
         mavenDeployer {
             beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
 
-            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
-                authentication(userName: System.getenv("OSSRH_USERNAME"), password: System.getenv("OSSRH_PASSWORD"))
-            }
-
-            snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
-                authentication(userName: System.getenv("OSSRH_USERNAME"), password: System.getenv("OSSRH_PASSWORD"))
-            }
-
             pom.project {
                 name 'jdivert'
                 packaging 'jar'
                 // optionally artifactId can be defined here
                 description 'A Java binding to WinDivert driver'
-                url 'https://github.com/ffalcinelli/jdivert'
+                url 'https://github.com/jgrossmann492/jdivert'
 
                 scm {
-                    connection 'https://github.com/ffalcinelli/jdivert.git'
-                    developerConnection 'https://github.com/ffalcinelli/jdivert.git'
-                    url 'https://github.com/ffalcinelli/jdivert'
+                    connection 'https://github.com/jgrossmann492/jdivert.git'
+                    developerConnection 'https://github.com/jgrossmann492/jdivert.git'
+                    url 'https://github.com/jgrossmann492/jdivert.git'
                 }
 
                 licenses {
@@ -99,6 +91,12 @@ uploadArchives {
                         name 'Fabio Falcinelli'
                         email 'fabio.falcinelli@gmail.com'
                     }
+					
+					developer {
+						id 'jgrossmann'
+						name 'John Grossmann'
+						email 'jgrossmann492@gmail.com'
+					}
                 }
             }
         }
