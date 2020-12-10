@@ -19,6 +19,8 @@ package com.github.ffalcinelli.jdivert.headers;
 
 import java.nio.ByteBuffer;
 
+import com.github.ffalcinelli.jdivert.Util;
+
 import static com.github.ffalcinelli.jdivert.Util.unsigned;
 import static com.github.ffalcinelli.jdivert.Util.zeroPadArray;
 import static com.github.ffalcinelli.jdivert.headers.Tcp.Flag.NS;
@@ -28,8 +30,12 @@ import static com.github.ffalcinelli.jdivert.headers.Tcp.Flag.NS;
  */
 public class Tcp extends Transport {
 
-    public Tcp(ByteBuffer raw, int offset) {
-        super(raw, offset);
+    public Tcp(ByteBuffer raw, Ip ipHdr, int offset, boolean duplicateBuffer) {
+        super(raw, ipHdr, offset, duplicateBuffer);
+    }
+    
+    public Tcp(ByteBuffer raw, Ip ipHdr, int offset) {
+        super(raw, ipHdr, offset, false);
     }
 
     @Override
@@ -69,6 +75,11 @@ public class Tcp extends Transport {
 
     public void setReserved(int reserved) {
         raw.put(start + 12, (byte) ((getDataOffset() << 4) | (reserved << 1) | (is(NS) ? 0x01 : 0x00)));
+    }
+    
+    public boolean isAny(Flag[] flags) {
+    	for(Flag f : flags) if(is(f)) return true;
+    	return false;
     }
 
     public boolean is(Flag flag) {
@@ -120,6 +131,29 @@ public class Tcp extends Transport {
     public void setUrgentPointer(int urgPtr) {
         raw.putShort(start + 18, (short) urgPtr);
     }
+    
+    public int getMSS() {
+    	byte[] options = getOptions();
+    	int index = 0;
+    	
+		while(index < options.length) {
+			if(options[index] == 0x02) {
+				ByteBuffer buff = ByteBuffer.allocate(2);
+				buff.put(options[index+2]);
+				buff.put(options[index+3]);
+				buff.flip();
+				return buff.getShort();
+			}else if(options[index] == 0x01) {
+				index++;
+				continue;
+			} else if(options[index] == 0x00) {
+				return -1;
+			} else {
+				index += options[index+1];
+			}
+		}
+		return -1;
+    }
 
     public byte[] getOptions() {
         if (getHeaderLength() > 20)
@@ -156,6 +190,12 @@ public class Tcp extends Transport {
                 , getUrgentPointer()
         );
     }
+    
+    @Override
+	public void calculateChecksum() {
+		Util.computeChecksumLocal(raw.array(), start, start+16, raw.capacity(), ipHdr.getVirtualHeaderTotal());
+	}
+  
 
     public enum Flag {
         NS, CWR, ECE, URG, ACK, PSH, RST, SYN, FIN

@@ -38,7 +38,7 @@ public class UDPIPv4TestCase extends IPv4TestCase {
     public void setUp() {
         rawDataHexString = "4500004281bf000040112191c0a82b09c0a82b01c9dd0035002ef268528e01000001000000000000013801380138013807696e2d61646472046172706100000c0001";
         super.setUp();
-        udp = new Udp(ipHdr.getByteBuffer(), ipHdr.getHeaderLength());
+        udp = new Udp(ipHdr.getByteBuffer(), ipHdr, ipHdr.getHeaderLength());
         srcAddr = "192.168.43.9";
         dstAddr = "192.168.43.1";
         srcPort = 51677;
@@ -95,7 +95,7 @@ public class UDPIPv4TestCase extends IPv4TestCase {
 
     @Test
     public void equalsAndHashCodeBis() {
-        Udp udpHdr = new Udp(ipHdr.getByteBuffer(), ipHeaderLength);
+        Udp udpHdr = new Udp(ipHdr.getByteBuffer(), ipHdr, ipHeaderLength);
         assertTrue(udp.equals(udpHdr));
         assertEquals(udp.hashCode(), udpHdr.hashCode());
     }

@@ -33,27 +33,31 @@ public abstract class Header {
 
     protected ByteBuffer raw;
     protected int start;
+    protected boolean hasPorts;
 
     public Header(ByteBuffer raw) {
-        this(raw, 0);
+        this(raw, 0, true);
+    }
+    
+    public Header(ByteBuffer raw, boolean duplicateBuffer) {
+    	this(raw, 0, duplicateBuffer);
     }
 
-    public Header(ByteBuffer raw, int start) {
-        //We duplicate the byte buffer so that an header can move indexes without affecting other code using the buffer
-        this.raw = raw.duplicate();
+    public Header(ByteBuffer raw, int start, boolean duplicateBuffer) {
+        this.raw = duplicateBuffer ? raw.duplicate() : raw;
         this.raw.order(BIG_ENDIAN);
         this.start = start;
-        //TODO: ByteBuffer allow to set up a sort of "window": setting limit to header length?
     }
 
     /**
      * Build headers from raw data.
      *
      * @param data The data's array of bytes
+     * @param duplicateBuffer	Whether to duplicate the raw data buffer stored in this object
      * @return A pair of headers, first of which is a {@link com.github.ffalcinelli.jdivert.headers.Ip} header while the second
      * is either a {@link com.github.ffalcinelli.jdivert.headers.Transport} or {@link com.github.ffalcinelli.jdivert.headers.Icmp} header
      */
-    public static Header[] buildHeaders(byte[] data) {
+    public static Header[] buildHeaders(byte[] data, boolean duplicateBuffer) {
         ByteBuffer raw = ByteBuffer.wrap(data);
         raw.order(BIG_ENDIAN);
         Ip ipHdr;
@@ -66,18 +70,38 @@ public abstract class Header {
         headers[0] = ipHdr;
         switch (ipHdr.getNextHeaderProtocol()) {
             case TCP:
-                headers[1] = new Tcp(raw, ipHdr.getHeaderLength());
+                headers[1] = new Tcp(raw, ipHdr, ipHdr.getHeaderLength(), duplicateBuffer);
                 break;
             case UDP:
-                headers[1] = new Udp(raw, ipHdr.getHeaderLength());
+                headers[1] = new Udp(raw, ipHdr, ipHdr.getHeaderLength(), duplicateBuffer);
                 break;
             case ICMP:
-                headers[1] = new Icmpv4(raw, ipHdr.getHeaderLength());
+                headers[1] = new Icmpv4(raw, ipHdr.getHeaderLength(), duplicateBuffer);
                 break;
             case ICMPV6:
-                headers[1] = new Icmpv6(raw, ipHdr.getHeaderLength());
+                headers[1] = new Icmpv6(raw, ipHdr.getHeaderLength(), duplicateBuffer);
         }
         return headers;
+    }
+    
+    public static Header[] buildHeaders(byte[] data) {
+    	return buildHeaders(data, false);
+    }
+    
+    /**
+     * Convenience method to check if the protocol header contains ports
+     * @return Whether this header contains ports
+     */
+    public boolean hasPorts() {
+    	return hasPorts;
+    }
+    
+    /**
+     * Convenience method to set if the protocol header contains ports
+     * @param hasPorts	Whether this header contains ports
+     */
+    public void setHasPorts(boolean hasPorts) {
+    	this.hasPorts = hasPorts;
     }
 
     /**
@@ -154,6 +178,8 @@ public abstract class Header {
     public ByteBuffer getByteBuffer() {
         return raw;
     }
+    
+    public abstract void calculateChecksum();
 
     @Override
     public boolean equals(Object o) {

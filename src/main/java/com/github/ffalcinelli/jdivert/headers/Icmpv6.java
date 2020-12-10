@@ -26,8 +26,12 @@ import static com.github.ffalcinelli.jdivert.Util.printHexBinary;
  */
 public class Icmpv6 extends Icmp {
 
+    public Icmpv6(ByteBuffer raw, int start, boolean duplicateBuffer) {
+        super(raw, start, duplicateBuffer);
+    }
+    
     public Icmpv6(ByteBuffer raw, int start) {
-        super(raw, start);
+        super(raw, start, false);
     }
 
     public byte[] getMessageBody() {
@@ -47,4 +51,9 @@ public class Icmpv6 extends Icmp {
                 , printHexBinary(getMessageBody())
         );
     }
+
+	@Override
+	public void calculateChecksum() {
+		throw new RuntimeException("Don't handle ipv6 local checksum yet");
+	}
 }

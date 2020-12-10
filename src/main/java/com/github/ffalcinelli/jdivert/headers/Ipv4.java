@@ -20,6 +20,8 @@ package com.github.ffalcinelli.jdivert.headers;
 import java.net.Inet4Address;
 import java.nio.ByteBuffer;
 
+import com.github.ffalcinelli.jdivert.Util;
+
 import static com.github.ffalcinelli.jdivert.Enums.Protocol;
 import static com.github.ffalcinelli.jdivert.Util.unsigned;
 import static com.github.ffalcinelli.jdivert.Util.zeroPadArray;
@@ -28,12 +30,13 @@ import static com.github.ffalcinelli.jdivert.Util.zeroPadArray;
  * Created by fabio on 24/10/2016.
  */
 public class Ipv4 extends Ip<Inet4Address> {
-
+	
+	public Ipv4(ByteBuffer raw, boolean duplicateBuffer) {
+        super(raw, duplicateBuffer);
+    }
+	
     public Ipv4(ByteBuffer raw) {
         super(raw);
-        setSrcAddrOffset(12);
-        setDstAddrOffset(16);
-        setAddrLen(4);
     }
 
     @Override
@@ -73,16 +76,13 @@ public class Ipv4 extends Ip<Inet4Address> {
     }
 
     @Override
-    public Protocol getNextHeaderProtocol() {
-        return getProtocol();
-    }
-
-    public Protocol getProtocol() {
+    protected Protocol getNextHeader() {
         return Protocol.fromValue(raw.get(9));
     }
 
     public void setProtocol(Protocol protocol) {
         raw.put(9, (byte) protocol.getValue());
+        this.nextProtocol = protocol;
     }
 
     public int getChecksum() {
@@ -207,7 +207,7 @@ public class Ipv4 extends Ip<Inet4Address> {
                 , flags
                 , getFragmentOffset()
                 , getTTL()
-                , getProtocol()
+                , getNextHeaderProtocol()
                 , Integer.toHexString(getChecksum())
         );
     }
@@ -215,4 +215,25 @@ public class Ipv4 extends Ip<Inet4Address> {
     public enum Flag {
         RESERVED, DF, MF
     }
+
+	@Override
+	public void calculateChecksum() {
+		Util.computeChecksumLocal(raw.array(), 0, 10, getHeaderLength(), 0);
+	}
+	
+	@Override
+	public int getVirtualHeaderTotal() {
+		
+		byte[] bytes = getSrcAddrBytes();
+		
+		int s1 = ((bytes[0] & 0xff) << 8) | (bytes[1] & 0xff);
+        s1 = (s1 << 16) | ((bytes[2] & 0xff) << 8) | (bytes[3] & 0xff);
+        
+        bytes = getDstAddrBytes();
+        
+        int d1 = ((bytes[0] & 0xff) << 8) | (bytes[1] & 0xff);
+        d1 = (d1 << 16) | ((bytes[2] & 0xff) << 8) | (bytes[3] & 0xff);
+        
+        return s1 + d1 + this.getNextHeaderProtocol().getValue() + raw.capacity() - this.getHeaderLength();
+	}
 }

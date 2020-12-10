@@ -18,6 +18,7 @@
 package com.github.ffalcinelli.jdivert;
 
 import com.github.ffalcinelli.jdivert.exceptions.WinDivertException;
+import com.github.ffalcinelli.jdivert.windivert.WinDivert;
 import com.github.ffalcinelli.jdivert.windivert.WinDivertAddress;
 import com.sun.jna.platform.win32.WinDef;
 import org.junit.Before;
@@ -47,19 +48,12 @@ public class PacketTestCase {
     @Before
     public void setUp() {
         addr = new WinDivertAddress();
-        addr.IfIdx = new WinDef.UINT(0);
-        addr.SubIfIdx = new WinDef.UINT(1);
-        addr.Direction = new WinDef.USHORT(OUTBOUND.getValue());
+        addr.setIsOutbound(true);
         raw = parseHexBinary("45000051476040008006f005c0a856a936f274fdd84201bb0876cfd0c19f9320501800ff8dba0000170303" +
                 "00240000000000000c2f53831a37ed3c3a632f47440594cab95283b558bf82cb7784344c3314");
         payload = parseHexBinary("17030300240000000000000c2f53831a37ed3c3a632f47440594cab95283b558bf82cb7784344c3314");
 
         packet = new Packet(raw, addr);
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void constructWithIllegalIface() {
-        packet = new Packet(raw, new int[]{0, 0, 0}, OUTBOUND);
     }
 
     @Test
@@ -75,12 +69,14 @@ public class PacketTestCase {
 
     @Test
     public void tcp() {
+    	WinDivertAddress address = packet.getWinDivertAddress();
+    	assertNotNull(address);
         assertTrue(packet.isTcp());
         assertNotNull(packet.getTcp());
-        assertTrue(packet.isOutbound());
+        assertTrue(address.isOutbound());
         assertTrue(packet.isIpv4());
         assertNotNull(packet.getIpv4());
-        assertFalse(packet.isLoopback());
+        assertFalse(address.isLoopback());
         assertFalse(packet.isUdp());
         assertNull(packet.getUdp());
         assertFalse(packet.isIpv6());
@@ -89,10 +85,10 @@ public class PacketTestCase {
         assertNull(packet.getIcmpv4());
         assertFalse(packet.isIcmpv6());
         assertNull(packet.getIcmpv6());
-        assertFalse(packet.isInbound());
+        assertFalse(address.isInbound());
         assertArrayEquals(payload, packet.getPayload());
-        assertArrayEquals(raw, packet.getRaw());
-        assertEquals(addr, packet.getWinDivertAddress());
+        assertArrayEquals(raw, packet.getRaw(false));
+        assertEquals(addr, address);
         assertTrue(packet.toString().contains(printHexBinary(raw)));
     }
 
@@ -140,9 +136,9 @@ public class PacketTestCase {
     public void excludeChecksums() throws WinDivertException {
         int cksum = packet.getTcp().getChecksum();
         packet.setSrcPort(8080);
-        packet.recalculateChecksum(NO_TCP_CHECKSUM);
+        WinDivert.recalculateChecksum(packet, NO_TCP_CHECKSUM);
         assertEquals(cksum, packet.getTcp().getChecksum());
-        packet.recalculateChecksum();
+        WinDivert.recalculateChecksum(packet);
         assertNotEquals(cksum, packet.getTcp().getChecksum());
     }
 }

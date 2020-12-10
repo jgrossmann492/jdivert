@@ -15,18 +15,27 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.github.ffalcinelli.jdivert;
+package com.github.ffalcinelli.jdivert.windivert;
 
 
+import com.github.ffalcinelli.jdivert.Enums;
+import com.github.ffalcinelli.jdivert.Packet;
+import com.github.ffalcinelli.jdivert.Util;
+import com.github.ffalcinelli.jdivert.Enums.CalcChecksumsOption;
+import com.github.ffalcinelli.jdivert.Enums.Flag;
+import com.github.ffalcinelli.jdivert.Enums.Layer;
+import com.github.ffalcinelli.jdivert.Enums.Param;
 import com.github.ffalcinelli.jdivert.exceptions.WinDivertException;
-import com.github.ffalcinelli.jdivert.windivert.WinDivertAddress;
-import com.github.ffalcinelli.jdivert.windivert.WinDivertDLL;
 import com.sun.jna.Memory;
+import com.sun.jna.Structure;
 import com.sun.jna.ptr.IntByReference;
 import com.sun.jna.ptr.LongByReference;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 import static com.github.ffalcinelli.jdivert.Enums.*;
 import static com.github.ffalcinelli.jdivert.exceptions.WinDivertException.throwExceptionOnGetLastError;
@@ -39,14 +48,32 @@ import static com.sun.jna.platform.win32.WinNT.HANDLE;
  * Created by fabio on 20/10/2016.
  */
 public class WinDivert {
+	
     public static int DEFAULT_PACKET_BUFFER_SIZE = 1500;
+    public static int DEFAULT_BATCH_MAX = 255;
+    
     private WinDivertDLL dll = WinDivertDLL.INSTANCE;
     private String filter;
     private Layer layer;
     private int priority;
     private int flags;
     private HANDLE handle;
-
+    
+    private int sendBufferSize = DEFAULT_PACKET_BUFFER_SIZE;
+    private int recvBufferSize = DEFAULT_PACKET_BUFFER_SIZE;
+    
+    private int maxBatchSendMessages = DEFAULT_BATCH_MAX;
+    private int maxBatchRecvMessages = DEFAULT_BATCH_MAX;
+    
+    private boolean usePooledBuffers;
+    private BlockingQueue<Memory> recvBufferQ;
+    private BlockingQueue<Memory> sendBufferQ;
+    
+    private boolean useBatchPooledBuffers;
+    private BlockingQueue<Memory> batchRecvBufferQ;
+    private BlockingQueue<Memory> batchSendBufferQ;
+    
+    
     /**
      * Create a new WinDivert instance based upon the given filter for
      * {@link Enums.Layer#NETWORK NETWORK} layer with priority set to 0 and in
@@ -80,6 +107,164 @@ public class WinDivert {
             this.flags |= flag.getValue();
         }
 
+    }
+    
+    /**
+     * Sets the size of the send buffers
+     * @param size Size of the buffer
+     */
+    public void setSendBufferSize(int size) {
+    	if(this.sendBufferSize == size) return;
+    	
+    	this.sendBufferSize = size;
+    	if(this.usePooledBuffers) {
+    		BlockingQueue<Memory> q = new ArrayBlockingQueue<Memory>(this.sendBufferQ.size());
+    		for(int i = 0; i<sendBufferQ.size(); i++) q.add(new Memory(size));
+    		this.sendBufferQ = q;
+    	}
+    }
+    
+    /**
+     * Sets the size of the receive buffers
+     * @param size Size of buffer
+     */
+    public void setRecvBufferSize(int size) {
+    	if(this.recvBufferSize == size) return;
+    	
+    	this.recvBufferSize = size;
+    	if(this.usePooledBuffers) {
+    		BlockingQueue<Memory> q = new ArrayBlockingQueue<Memory>(this.recvBufferQ.size());
+    		for(int i = 0; i<recvBufferQ.size(); i++) q.add(new Memory(size));
+    		this.recvBufferQ = q;
+    	}
+    }
+    
+    public void setMaxRecvBatchMessages(int maxRecv) {
+    	if(this.maxBatchRecvMessages == maxRecv) return;
+    	
+    	this.maxBatchRecvMessages = maxRecv;
+    	if(this.useBatchPooledBuffers) {
+    		BlockingQueue<Memory> q = new ArrayBlockingQueue<Memory>(this.batchRecvBufferQ.size());
+    		int size = maxRecv * this.recvBufferSize;
+    		for(int i = 0; i<batchRecvBufferQ.size(); i++) q.add(new Memory(size));
+    		this.batchRecvBufferQ = q;
+    	}
+    }
+    
+    public void setMaxSendBatchMessages(int maxSend) {
+    	if(this.maxBatchSendMessages == maxSend) return;
+    	
+    	this.maxBatchSendMessages = maxSend;
+    	if(this.useBatchPooledBuffers) {
+    		BlockingQueue<Memory> q = new ArrayBlockingQueue<Memory>(this.batchSendBufferQ.size());
+    		int size = maxSend * this.sendBufferSize;
+    		for(int i = 0; i<batchSendBufferQ.size(); i++) q.add(new Memory(size));
+    		this.batchSendBufferQ = q;
+    	}
+    }
+    
+    public void setUseBatchPooledBuffers(boolean usePooled, int pooledRcv, int pooledSend, int maxRecvMessages, int maxSendMessages) {
+    	if(this.useBatchPooledBuffers == usePooled) return;
+    	
+    	if(!usePooled) {
+    		this.useBatchPooledBuffers = usePooled;
+    		
+    		this.batchRecvBufferQ = null;
+    		this.batchSendBufferQ = null;
+    	}
+    	else {
+    		if(pooledRcv < 1 || pooledSend < 1) throw new IllegalArgumentException("Number of pooled batch receive and pooled batch send memory buffers must be greater than 0");
+    		if(maxRecvMessages < 1 || maxSendMessages < 1) throw new IllegalArgumentException("Max number of batch received messages and batch sent messages must be greater than 0");
+    		
+	    	this.batchRecvBufferQ = new ArrayBlockingQueue<Memory>(pooledRcv);
+	    	for(int i = 0; i<pooledRcv; i++) batchRecvBufferQ.add(new Memory(this.recvBufferSize));
+    		
+	    	this.batchSendBufferQ = new ArrayBlockingQueue<Memory>(pooledSend);
+	    	for(int i = 0; i<pooledSend; i++) batchSendBufferQ.add(new Memory(this.sendBufferSize));
+	    	
+	    	//must be set at the end of this if case to avoid nullpointer race condition with pooled queues being accessed.
+	    	this.usePooledBuffers = usePooled;
+    	}
+    }
+    
+    /**
+     * For efficient use of resources. This method creates a pool of Memory buffers to be reused when sending or receiving messages.
+     * More efficient than creating a new memory buffer every call. For applications that use a single thread to send and a single thread to receive,
+     * a send and receive pool of size 1 is sufficient. 
+     * 
+     * @param usePooled	True if you want to use pooled memory buffers, false otherwise
+     * @param numRcv	Number of memory buffers for receiving messages	
+     * @param numSend	Number of memory buffers for sending messages
+     */
+    public void setUsePooledBuffers(boolean usePooled, int numRcv, int numSend) {
+    	if(this.usePooledBuffers == usePooled) return;
+    	
+    	if(!usePooled) {
+    		//must be set at beginning of this if case to avoid nullpointer race condition with pooled queues being accessed
+    		this.usePooledBuffers = usePooled;
+    		
+    		this.recvBufferQ = null;
+    		this.sendBufferQ = null;
+    	}else {
+    		if(numRcv < 1 || numSend < 1) throw new IllegalArgumentException("Number of receive pooled buffers and send pooled buffers must be greater than 0");
+    		
+	    	this.recvBufferQ = new ArrayBlockingQueue<Memory>(numRcv);
+	    	for(int i = 0; i<numRcv; i++) recvBufferQ.add(new Memory(this.recvBufferSize));
+    		
+	    	this.sendBufferQ = new ArrayBlockingQueue<Memory>(numSend);
+	    	for(int i = 0; i<numSend; i++) sendBufferQ.add(new Memory(this.sendBufferSize));
+	    	
+	    	//must be set at the end of this if case to avoid nullpointer race condition with pooled queues being accessed.
+	    	this.usePooledBuffers = usePooled;
+    	}
+    }
+    
+    private Memory getSendBuffer(int size) throws InterruptedException {
+    	if(!this.usePooledBuffers || size > this.sendBufferSize) {
+    		return new Memory(size);
+    	}
+    	else {
+    		return this.sendBufferQ.take();
+    	}
+    }
+    
+    private Memory getRecvBuffer(int size) throws InterruptedException {
+    	if(!this.usePooledBuffers || size > this.recvBufferSize) {
+    		return new Memory(size);
+    	}
+    	else {
+    		return this.recvBufferQ.take();
+    	}
+    }
+    
+    private void returnSendBuffer(Memory m) {
+    	if(m.size() == this.sendBufferSize) {
+    		this.sendBufferQ.add(m);
+    	}
+    }
+    
+    private void returnRecvBuffer(Memory m) {
+    	if(m.size() == this.recvBufferSize) {
+    		this.recvBufferQ.add(m);
+    	}
+    }
+    
+    private Memory getBatchSendBuffer(int numMessages) throws InterruptedException {
+    	if(!this.useBatchPooledBuffers || numMessages > this.maxBatchSendMessages) {
+    		return new Memory(numMessages * this.sendBufferSize);
+    	}
+    	else {
+    		return this.batchSendBufferQ.take();
+    	}
+    }
+    
+    private Memory getBatchRecvBuffer(int numMessages) throws InterruptedException {
+    	if(!this.useBatchPooledBuffers || numMessages > this.maxBatchRecvMessages) {
+    		return new Memory(numMessages * this.recvBufferSize);
+    	}
+    	else {
+    		return this.batchRecvBufferQ.take();
+    	}
     }
 
     /**
@@ -165,9 +350,10 @@ public class WinDivert {
      * @return A {@link com.github.ffalcinelli.jdivert.Packet Packet} instance
      * @throws WinDivertException Whenever the DLL call sets a LastError different by 0 (Success) or 997 (Overlapped I/O
      *                            is in progress)
+     * @throws InterruptedException Only thrown if current thread is interrupted while waiting for a memory buffer from the pooled buffer queue.
      */
-    public Packet recv() throws WinDivertException {
-        return recv(DEFAULT_PACKET_BUFFER_SIZE);
+    public Packet recv() throws WinDivertException, InterruptedException {
+        return recv(recvBufferSize);
     }
 
     /**
@@ -192,16 +378,50 @@ public class WinDivert {
      * @return A {@link com.github.ffalcinelli.jdivert.Packet Packet} instance
      * @throws WinDivertException Whenever the DLL call sets a LastError different by 0 (Success) or 997 (Overlapped I/O
      *                            is in progress)
+     * @throws InterruptedException Only thrown if current thread is interrupted while waiting for a memory buffer from the pooled buffer queue.
      */
-    public Packet recv(int bufsize) throws WinDivertException {
+    public Packet recv(int bufsize) throws WinDivertException, InterruptedException {
         WinDivertAddress address = new WinDivertAddress();
-        Memory buffer = new Memory(bufsize);
-        IntByReference recvLen = new IntByReference();
-        dll.WinDivertRecv(handle, buffer, bufsize, address.getPointer(), recvLen);
-        address.read();
-        throwExceptionOnGetLastError();
-        byte[] raw = buffer.getByteArray(0, recvLen.getValue());
-        return new Packet(raw, address);
+        Memory buffer = this.getRecvBuffer(bufsize);
+        try {
+	        IntByReference recvLen = new IntByReference();
+	        
+	        dll.WinDivertRecv(handle, buffer, bufsize, recvLen, address.getPointer());
+	        throwExceptionOnGetLastError();
+	        address.read();
+	
+	        return new Packet(buffer.getByteArray(0, recvLen.getValue()), address);
+        }finally {
+        	if(this.usePooledBuffers) this.returnRecvBuffer(buffer);
+        }
+    }
+    
+    public Packet[] recvEx() throws InterruptedException, WinDivertException {
+    	return recvEx(this.maxBatchRecvMessages);
+    }
+    
+    public Packet[] recvEx(int batchSize) throws InterruptedException, WinDivertException {    	
+    	/*TODO pool arrays of windivertaddress to be used by batch processing only, then copy correct amount received after receive call*/
+    	Structure[] addrArray = new WinDivertAddress().toArray(batchSize);
+    	
+    	Memory buffer = this.getBatchRecvBuffer(batchSize);
+    	
+    	IntByReference recvLen = new IntByReference();
+    	IntByReference pAddrLen = new IntByReference(addrArray[0].size() * addrArray.length);
+    	
+    	dll.WinDivertRecvEx(handle, buffer, (int)buffer.size(), recvLen, 0L, addrArray[0].getPointer(), pAddrLen, null);
+    	throwExceptionOnGetLastError();
+    	
+    	Packet[] packets = new Packet[pAddrLen.getValue()];
+    	
+    	/*int offset = 0;
+    	for(int i = 0; i<packets.length; i++) {
+    		WinDivertAddress addr = (WinDivertAddress) addrArray[i];
+    		addr.read();
+    		packets[i] = new Packet(buffer.getByteArray(offset, arraySize))
+    	}*/
+    	
+    	return packets;
     }
 
     /**
@@ -209,7 +429,7 @@ public class WinDivert {
      * Recalculates the checksum before sending.<br>
      * The return value is the number of bytes actually sent.<br>
      * <p>
-     * The injected packet may be one received from {@link com.github.ffalcinelli.jdivert.WinDivert#recv() recv}, or a modified version, or a completely new packet.
+     * The injected packet may be one received from {@link com.github.ffalcinelli.jdivert.windivert.WinDivert#recv() recv}, or a modified version, or a completely new packet.
      * Injected packets can be captured and diverted again by other WinDivert handles with lower priorities.
      * </p><p>
      * The remapped function is {@code WinDivertSend}:
@@ -230,8 +450,9 @@ public class WinDivert {
      * @return The number of bytes actually sent
      * @throws WinDivertException Whenever the DLL call sets a LastError different by 0 (Success) or 997 (Overlapped I/O
      *                            is in progress)
+     * @throws InterruptedException Only thrown if current thread is interrupted while waiting for a memory buffer from the pooled buffer queue.
      */
-    public int send(Packet packet) throws WinDivertException {
+    public int send(Packet packet) throws WinDivertException, InterruptedException {
         return send(packet, true);
     }
 
@@ -243,7 +464,7 @@ public class WinDivert {
      * </ul>
      * The return value is the number of bytes actually sent.
      * <p>
-     * The injected packet may be one received from {@link com.github.ffalcinelli.jdivert.WinDivert#recv() recv}, or a modified version, or a completely new packet.
+     * The injected packet may be one received from {@link com.github.ffalcinelli.jdivert.windivert.WinDivert#recv() recv}, or a modified version, or a completely new packet.
      * Injected packets can be captured and diverted again by other WinDivert handles with lower priorities.
      * </p><p>
      * The remapped function is {@code WinDivertSend}:
@@ -266,21 +487,29 @@ public class WinDivert {
      * @return The number of bytes actually sent
      * @throws WinDivertException Whenever the DLL call sets a LastError different by 0 (Success) or 997 (Overlapped I/O
      *                            is in progress)
+     * @throws InterruptedException Only thrown if current thread is interrupted while waiting for a memory buffer from the pooled buffer queue.
      */
-    public int send(Packet packet, boolean recalculateChecksum, CalcChecksumsOption... options) throws WinDivertException {
-        if (recalculateChecksum) {
-            packet.recalculateChecksum(options);
-        }
+    public int send(Packet packet, boolean recalculateChecksum, CalcChecksumsOption... options) throws WinDivertException, InterruptedException {
+        if (recalculateChecksum) recalculateChecksum(packet, options);
+        
         WinDivertAddress address = packet.getWinDivertAddress();
         IntByReference sendLen = new IntByReference();
-        byte[] raw = packet.getRaw();
-        Memory buffer = new Memory(raw.length);
-
-        buffer.write(0, raw, 0, raw.length);
-        address.write();
-        dll.WinDivertSend(handle, buffer, raw.length, address.getPointer(), sendLen);
-        throwExceptionOnGetLastError();
-        return sendLen.getValue();
+        
+        byte[] raw = packet.getRaw(false);
+        Memory buffer = this.getSendBuffer(raw.length);
+        try {
+	        buffer.write(0, raw, 0, raw.length);
+	        address.write();
+	        
+	        //System.out.println(address.toString());
+	        
+	        dll.WinDivertSend(handle, buffer, raw.length, sendLen, address.getPointer());
+	        throwExceptionOnGetLastError();
+	        
+	        return sendLen.getValue();
+        }finally {
+        	if(this.usePooledBuffers) this.returnSendBuffer(buffer);
+        }
     }
 
     /**
@@ -337,6 +566,30 @@ public class WinDivert {
         }
         dll.WinDivertSetParam(handle, param.getValue(), value);
     }
+    
+    /**
+     * Recalculates the checksum fields matching the given {@link Enums.CalcChecksumsOption options}.
+     *
+     * @param p Packet to calculate checksums for
+     * @param options Drive the recalculateChecksum function.
+     * @throws WinDivertException Whenever the DLL call sets a LastError different by 0 (Success) or 997 (Overlapped I/O
+     *                            is in progress).
+     */
+    public static void recalculateChecksum(Packet p, Enums.CalcChecksumsOption... options) throws WinDivertException {
+        long flags = 0;
+        for (Enums.CalcChecksumsOption option : options) {
+            flags |= option.getValue();
+        }
+        byte[] rawBytes = p.getRaw(false);
+        Memory memory = new Memory(rawBytes.length);
+        memory.write(0, rawBytes, 0, rawBytes.length);
+        WinDivertDLL.INSTANCE.WinDivertHelperCalcChecksums(memory, rawBytes.length, null, flags);
+        throwExceptionOnGetLastError();
+        
+        Util.setBytesAtOffset(ByteBuffer.wrap(rawBytes), 0, rawBytes.length,
+                memory.getByteArray(0, rawBytes.length));
+    }
+    
 
     /**
      * Checks if the given flag is set

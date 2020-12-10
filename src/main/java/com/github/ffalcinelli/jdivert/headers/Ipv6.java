@@ -20,6 +20,8 @@ package com.github.ffalcinelli.jdivert.headers;
 import java.net.Inet6Address;
 import java.nio.ByteBuffer;
 
+import com.github.ffalcinelli.jdivert.Util;
+
 import static com.github.ffalcinelli.jdivert.Enums.Protocol;
 import static com.github.ffalcinelli.jdivert.Util.unsigned;
 
@@ -29,11 +31,15 @@ import static com.github.ffalcinelli.jdivert.Util.unsigned;
 public class Ipv6 extends Ip<Inet6Address> {
 
 
-    public Ipv6(ByteBuffer raw) {
-        super(raw);
+    public Ipv6(ByteBuffer raw, boolean duplicateBuffer) {
+        super(raw, duplicateBuffer);
         setSrcAddrOffset(8);
         setDstAddrOffset(24);
         setAddrLen(16);
+    }
+    
+    public Ipv6(ByteBuffer raw) {
+        this(raw, false);
     }
 
     @Override
@@ -45,11 +51,6 @@ public class Ipv6 extends Ip<Inet6Address> {
         raw.put(0, (byte) ((version << 4)));
     }
 
-    @Override
-    public Protocol getNextHeaderProtocol() {
-        return getNextHeader();
-    }
-
     public int getPayloadLength() {
         return unsigned(raw.getShort(4));
     }
@@ -58,12 +59,14 @@ public class Ipv6 extends Ip<Inet6Address> {
         raw.putShort(4, length);
     }
 
-    public Protocol getNextHeader() {
+    @Override
+    protected Protocol getNextHeader() {
         return Protocol.fromValue(raw.get(6));
     }
 
-    public void setNextHeader(Protocol protocol) {
+    public void setProtocol(Protocol protocol) {
         raw.put(6, (byte) protocol.getValue());
+        this.nextProtocol = protocol;
     }
 
     public int getHopLimit() {
@@ -85,4 +88,14 @@ public class Ipv6 extends Ip<Inet6Address> {
                 , getHopLimit()
         );
     }
+    
+    @Override
+	public void calculateChecksum() {
+    	throw new RuntimeException("Do not handle local ipv6 checksums yet");
+	}
+
+	@Override
+	public int getVirtualHeaderTotal() {
+		throw new RuntimeException("Don't handle getVirtualHeaderTotal for ipv6 yet");
+	}
 }

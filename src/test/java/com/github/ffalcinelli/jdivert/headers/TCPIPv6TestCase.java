@@ -44,7 +44,7 @@ public class TCPIPv6TestCase extends IPv6TestCase {
                 "0d0a557365722d4167656e743a206375726c2f372e33382e300d0a486f73743a205b666330303a323a303a313a3a315" +
                 "d3a383038300d0a4163636570743a202a2f2a0d0a0d0a";
         super.setUp();
-        tcpHdr = new Tcp(ipv6Hdr.getByteBuffer(), ipv6Hdr.getHeaderLength());
+        tcpHdr = new Tcp(ipv6Hdr.getByteBuffer(), ipv6Hdr, ipv6Hdr.getHeaderLength());
         srcAddr = "fc00:2:0:2:0:0:0:1";
         dstAddr = "fc00:2:0:1:0:0:0:1";
         protocol = TCP;
@@ -162,7 +162,7 @@ public class TCPIPv6TestCase extends IPv6TestCase {
 
     @Test
     public void equalsAndHashCodeBis(){
-        Tcp tcpHdr2 = new Tcp(ipHdr.getByteBuffer(), ipHeaderLength);
+        Tcp tcpHdr2 = new Tcp(ipHdr.getByteBuffer(), ipHdr, ipHeaderLength);
         assertTrue(tcpHdr.equals(tcpHdr2));
         assertEquals(tcpHdr.hashCode(), tcpHdr2.hashCode());
     }

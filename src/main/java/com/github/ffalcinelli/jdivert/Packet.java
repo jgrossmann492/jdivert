@@ -28,7 +28,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 
-import static com.github.ffalcinelli.jdivert.Enums.Direction;
+import com.github.ffalcinelli.jdivert.Enums.Protocol;
+
 import static com.github.ffalcinelli.jdivert.Util.printHexBinary;
 import static com.github.ffalcinelli.jdivert.exceptions.WinDivertException.throwExceptionOnGetLastError;
 import static com.sun.jna.platform.win32.WinDef.UINT;
@@ -45,75 +46,33 @@ import static com.sun.jna.platform.win32.WinDef.USHORT;
 public class Packet {
 
     private ByteBuffer raw;
-    private Direction direction;
-    private int[] iface;
-    private Transport transHdr;
     private Ip ipHdr;
-    private Icmp icmpHdr;
-
-    /**
-     * Construct a {@link Packet} from the given byte array and for the given {@link com.github.ffalcinelli.jdivert.windivert.WinDivertAddress} metadata.
-     *
-     * @param raw  The packet's array of bytes.
-     * @param addr The metadata (interface and direction).
-     */
-    public Packet(byte[] raw, WinDivertAddress addr) {
-        this(raw, new int[]{addr.IfIdx.intValue(), addr.SubIfIdx.intValue()},
-                Direction.fromValue(addr.Direction.intValue()));
-    }
+    private Header protoHeader;
+    private WinDivertAddress addr;
 
     /**
      * Construct a {@link Packet} from the given byte array and for the given metadata.
      *
      * @param raw       The packet's array of bytes.
-     * @param iface     The interface in form of {InterfaceIndex, InterfaceSubIndex} integer pair.
-     * @param direction The {@link Enums.Direction Direction}.
+     * @param addr		The WinDivertAddress helper object
+     * @param duplicateBuffer	Indicate whether to duplicate the raw buffer stored in this object
      */
-    public Packet(byte[] raw, int[] iface, Direction direction) {
-        if (iface.length != 2) {
-            throw new IllegalArgumentException("Iface parameter must be a IfIdx, IfSubIdx pair");
-        }
+    public Packet(byte[] raw, WinDivertAddress addr, boolean duplicateBuffer) {
+    	this.addr = addr;
         this.raw = ByteBuffer.wrap(raw);
         this.raw.order(ByteOrder.BIG_ENDIAN);
-        this.direction = direction;
-        this.iface = iface;
-        for (Header header : Header.buildHeaders(raw)) {
+       
+        for (Header header : Header.buildHeaders(raw, duplicateBuffer)) {
             if (header instanceof Ip) {
                 ipHdr = (Ip) header;
-            } else if (header instanceof Icmp) {
-                icmpHdr = (Icmp) header;
             } else {
-                transHdr = (Transport) header;
+            	protoHeader = header;
             }
         }
     }
-
-    /**
-     * Indicates if the packet is on the loopback interface.
-     *
-     * @return True, if the packet is on the loopback interface, false otherwise.
-     */
-    public boolean isLoopback() {
-        return iface[0] == 1;
-    }
-
-    /**
-     * Convenience method to check if the packet is {@link Enums.Direction#OUTBOUND OUTBOUND}.
-     *
-     * @return True if packet is {@link Enums.Direction#OUTBOUND OUTBOUND}, false otherwise.
-     */
-    public boolean isOutbound() {
-        return direction == Direction.OUTBOUND;
-    }
-
-    /**
-     * Convenience method to check if the packet is {@link Enums.Direction#INBOUND INBOUND}.
-     *
-     * @return True if packet is {@link Enums.Direction#INBOUND INBOUND}, false otherwise.
-     */
-
-    public boolean isInbound() {
-        return direction == Direction.INBOUND;
+    
+    public Packet(byte[] raw, WinDivertAddress addr) {
+    	this(raw, addr, false);
     }
 
     /**
@@ -122,7 +81,7 @@ public class Packet {
      * @return True if packet is an Ipv4 one.
      */
     public boolean isIpv4() {
-        return ipHdr instanceof Ipv4;
+        return ipHdr.getVersion() == 4;
     }
 
     /**
@@ -131,7 +90,7 @@ public class Packet {
      * @return True if packet is an Ipv6 one.
      */
     public boolean isIpv6() {
-        return ipHdr instanceof Ipv6;
+        return ipHdr.getVersion() == 6;
     }
 
     /**
@@ -140,7 +99,7 @@ public class Packet {
      * @return True if packet is an Icmpv4 one
      */
     public boolean isIcmpv4() {
-        return icmpHdr instanceof Icmpv4;
+    	return ipHdr.getNextHeaderProtocol() == Protocol.ICMP;
     }
 
     /**
@@ -149,7 +108,7 @@ public class Packet {
      * @return True if packet is an Icmpv6 one.
      */
     public boolean isIcmpv6() {
-        return icmpHdr instanceof Icmpv6;
+        return ipHdr.getNextHeaderProtocol() == Protocol.ICMPV6;
     }
 
     /**
@@ -158,7 +117,7 @@ public class Packet {
      * @return True if packet is an Udp one.
      */
     public boolean isUdp() {
-        return transHdr instanceof Udp;
+        return ipHdr.getNextHeaderProtocol() == Protocol.UDP;
     }
 
     /**
@@ -167,7 +126,7 @@ public class Packet {
      * @return True if packet is an Tcp one.
      */
     public boolean isTcp() {
-        return transHdr instanceof Tcp;
+        return ipHdr.getNextHeaderProtocol() == Protocol.TCP;
     }
 
     /**
@@ -176,7 +135,7 @@ public class Packet {
      * @return The {@link com.github.ffalcinelli.jdivert.headers.Tcp} if present, {@code null} otherwise.
      */
     public Tcp getTcp() {
-        return isTcp() ? (Tcp) transHdr : null;
+        return isTcp() ? (Tcp) protoHeader : null;
     }
 
     /**
@@ -185,7 +144,7 @@ public class Packet {
      * @return The {@link com.github.ffalcinelli.jdivert.headers.Udp} if present, {@code null} otherwise.
      */
     public Udp getUdp() {
-        return isUdp() ? (Udp) transHdr : null;
+        return isUdp() ? (Udp) protoHeader : null;
     }
 
     /**
@@ -194,7 +153,7 @@ public class Packet {
      * @return The {@link com.github.ffalcinelli.jdivert.headers.Icmpv4} if present, {@code null} otherwise.
      */
     public Icmpv4 getIcmpv4() {
-        return isIcmpv4() ? (Icmpv4) icmpHdr : null;
+        return isIcmpv4() ? (Icmpv4) protoHeader : null;
     }
 
     /**
@@ -203,7 +162,7 @@ public class Packet {
      * @return The {@link com.github.ffalcinelli.jdivert.headers.Icmpv6} if present, {@code null} otherwise.
      */
     public Icmpv6 getIcmpv6() {
-        return isIcmpv6() ? (Icmpv6) icmpHdr : null;
+        return isIcmpv6() ? (Icmpv6) protoHeader : null;
     }
 
     /**
@@ -222,6 +181,14 @@ public class Packet {
      */
     public Ipv6 getIpv6() {
         return isIpv6() ? (Ipv6) ipHdr : null;
+    }
+    
+    public Ip getIpHeader() {
+    	return ipHdr;
+    }
+    
+    public Header getProtocolHeader() {
+    	return this.protoHeader;
     }
 
     /**
@@ -268,7 +235,7 @@ public class Packet {
      * @return The source port number if present, {@code null} otherwise.
      */
     public Integer getSrcPort() {
-        return transHdr != null ? transHdr.getSrcPort() : null;
+        return protoHeader.hasPorts() ? ((Transport) protoHeader).getSrcPort() : null;
     }
 
     /**
@@ -277,8 +244,8 @@ public class Packet {
      * @param port The port number to set for source service. If packet does not have such info an {@link java.lang.IllegalStateException} is thrown.
      */
     public void setSrcPort(int port) {
-        if (transHdr != null)
-            transHdr.setSrcPort(port);
+        if (protoHeader.hasPorts())
+            ((Transport) protoHeader).setSrcPort(port);
         else
             throw new IllegalStateException("A port number cannot be set");
     }
@@ -289,7 +256,7 @@ public class Packet {
      * @return The destination port number if present, {@code null} otherwise.
      */
     public Integer getDstPort() {
-        return transHdr != null ? transHdr.getDstPort() : null;
+        return protoHeader.hasPorts() ? ((Transport) protoHeader).getDstPort() : null;
     }
 
     /**
@@ -298,8 +265,8 @@ public class Packet {
      * @param port The port number to set for destination service. If packet does not have such info an {@link java.lang.IllegalStateException} is thrown.
      */
     public void setDstPort(int port) {
-        if (transHdr != null)
-            transHdr.setDstPort(port);
+        if (protoHeader.hasPorts())
+            ((Transport) protoHeader).setDstPort(port);
         else
             throw new IllegalStateException("A port number cannot be set");
     }
@@ -320,6 +287,9 @@ public class Packet {
      */
     public void setPayload(byte[] payload) {
         //TODO: adjust length!
+    	System.out.println("headers offset: "+getHeadersLength());
+    	System.out.println("total length: "+raw.capacity());
+    	System.out.println("payload length: "+payload.length);
         Util.setBytesAtOffset(raw, getHeadersLength(), payload.length, payload);
     }
 
@@ -328,38 +298,16 @@ public class Packet {
      * @return The overall {@link Packet} headers length
      */
     public int getHeadersLength() {
-        return ipHdr.getHeaderLength() + (transHdr != null ? transHdr.getHeaderLength() : icmpHdr.getHeaderLength());
+    	return ipHdr.getHeaderLength() + protoHeader.getHeaderLength();
     }
 
     /**
      * Get the {@link Packet} content (headers and payload) as an array of bytes.
-     *
+     * @param copy Whether to copy the stored raw data or return the raw data as is
      * @return The packet's array of bytes.
      */
-    public byte[] getRaw() {
-        return Util.getBytesAtOffset(raw, 0, raw.capacity());
-    }
-
-    /**
-     * Recalculates the checksum fields matching the given {@link Enums.CalcChecksumsOption options}.
-     *
-     * @param options Drive the recalculateChecksum function.
-     * @throws WinDivertException Whenever the DLL call sets a LastError different by 0 (Success) or 997 (Overlapped I/O
-     *                            is in progress).
-     */
-    public void recalculateChecksum(Enums.CalcChecksumsOption... options) throws WinDivertException {
-        int flags = 0;
-        for (Enums.CalcChecksumsOption option : options) {
-            flags |= option.getValue();
-        }
-        byte[] rawBytes = getRaw();
-        Memory memory = new Memory(rawBytes.length);
-        memory.write(0, rawBytes, 0, rawBytes.length);
-        WinDivertDLL.INSTANCE.WinDivertHelperCalcChecksums(memory, rawBytes.length, flags);
-        throwExceptionOnGetLastError();
-
-        Util.setBytesAtOffset(raw, 0, rawBytes.length,
-                memory.getByteArray(0, rawBytes.length));
+    public byte[] getRaw(boolean copy) {
+        return copy ? Util.getBytesAtOffset(raw, 0, raw.capacity()) : raw.array();
     }
 
     /**
@@ -368,21 +316,22 @@ public class Packet {
      * @return The {@link com.github.ffalcinelli.jdivert.windivert.WinDivertAddress} representing the packet metadata.
      */
     public WinDivertAddress getWinDivertAddress() {
-        WinDivertAddress addr = new WinDivertAddress();
-        addr.IfIdx = new UINT(iface[0]);
-        addr.SubIfIdx = new UINT(iface[1]);
-        addr.Direction = new USHORT(direction.getValue());
         return addr;
     }
+    
+    public void calculateAllCheckSumsLocal() {    	    	
+    	protoHeader.calculateChecksum();
+    	ipHdr.calculateChecksum();
+    }
+    
 
     @Override
     public String toString() {
-        return String.format("Packet {%s, %s, direction=%s, iface=%s, raw=%s}"
+        return String.format("Packet {%s, %s, %s, raw=%s}"
                 , ipHdr
-                , transHdr != null ? transHdr : icmpHdr
-                , direction
-                , Arrays.toString(iface)
-                , printHexBinary(getRaw())
+                , protoHeader
+                , addr
+                , printHexBinary(getRaw(false))
         );
     }
 
@@ -392,14 +341,14 @@ public class Packet {
         if (o == null || getClass() != o.getClass()) return false;
 
         Packet packet = (Packet) o;
-        return Arrays.equals(getRaw(), packet.getRaw()) &&
+        return Arrays.equals(raw.array(), packet.raw.array()) &&
                 getWinDivertAddress().equals(packet.getWinDivertAddress());
     }
 
 
     @Override
     public int hashCode() {
-        int result = Arrays.hashCode(getRaw());
+        int result = Arrays.hashCode(raw.array());
         result = 31 * result + getWinDivertAddress().hashCode();
         return result;
     }

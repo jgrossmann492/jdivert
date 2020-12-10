@@ -26,8 +26,12 @@ import static com.github.ffalcinelli.jdivert.Util.unsigned;
  */
 public abstract class Transport extends Header {
 
-    public Transport(ByteBuffer raw, int offset) {
-        super(raw, offset);
+	protected Ip ipHdr;
+	
+    public Transport(ByteBuffer raw, Ip ipHdr, int offset, boolean duplicateBuffer) {
+        super(raw, offset, duplicateBuffer);
+        setHasPorts(true);
+        this.ipHdr = ipHdr;
     }
 
     public int getSrcPort() {

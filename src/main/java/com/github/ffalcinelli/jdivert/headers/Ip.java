@@ -21,6 +21,8 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 
+import com.github.ffalcinelli.jdivert.Enums;
+
 import static com.github.ffalcinelli.jdivert.Enums.Protocol;
 
 /**
@@ -28,16 +30,32 @@ import static com.github.ffalcinelli.jdivert.Enums.Protocol;
  */
 public abstract class Ip<T extends InetAddress> extends Header {
 
+	//defaults set for ipv4
     private int srcAddrOffset = 12;
     private int dstAddrOffset = 16;
     private int addrLen = 4;
+    
+    Protocol nextProtocol;
 
+    public Ip(ByteBuffer raw, boolean duplicateBuffer) {
+        super(raw, duplicateBuffer);
+        nextProtocol = getNextHeader();
+    }
+    
     public Ip(ByteBuffer raw) {
-        super(raw);
+    	this(raw, false);
     }
 
     public static int getVersion(ByteBuffer raw) {
         return raw.get(0) >> 4;
+    }
+    
+    public byte[] getSrcAddrBytes() {
+    	return getBytesAtOffset(srcAddrOffset, addrLen);
+    }
+    
+    public byte[] getDstAddrBytes() {
+    	return getBytesAtOffset(dstAddrOffset, addrLen);
     }
 
     public T getInetAddressAtOffset(int offset) throws UnknownHostException {
@@ -90,12 +108,24 @@ public abstract class Ip<T extends InetAddress> extends Header {
     public void setDstAddrStr(String dstAddr) throws UnknownHostException {
         setDstAddr((T) InetAddress.getByName(dstAddr));
     }
+    
+    public void setDstAddr(byte[] addr) {
+    	setBytesAtOffset(dstAddrOffset, addr.length, addr);
+    }
+    
+    public void setSrcAddr(byte[] addr) {
+    	setBytesAtOffset(srcAddrOffset, addr.length, addr);
+    }
 
     public int getVersion() {
         return raw.get(0) >> 4;
     }
 
-    public abstract Protocol getNextHeaderProtocol();
+    protected abstract Protocol getNextHeader();
+    
+    public Protocol getNextHeaderProtocol() {
+    	return nextProtocol;
+    }
 
     /**
      * Set the source address field offset.
@@ -126,4 +156,6 @@ public abstract class Ip<T extends InetAddress> extends Header {
     public void setAddrLen(int addrLen) {
         this.addrLen = addrLen;
     }
+    
+    public abstract int getVirtualHeaderTotal();
 }

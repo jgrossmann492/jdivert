@@ -18,6 +18,8 @@
 package com.github.ffalcinelli.jdivert;
 
 import com.github.ffalcinelli.jdivert.exceptions.WinDivertException;
+import com.github.ffalcinelli.jdivert.windivert.WinDivert;
+
 import org.junit.After;
 import org.junit.Test;
 

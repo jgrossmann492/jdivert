@@ -41,7 +41,7 @@ public class TCPIPv4TestCase extends IPv4TestCase {
         rawDataHexString = "45000051476040008006f005c0a856a936f274fdd84201bb0876cfd0c19f9320501800ff8dba0000170303" +
                 "00240000000000000c2f53831a37ed3c3a632f47440594cab95283b558bf82cb7784344c3314";
         super.setUp();
-        tcpHdr = new Tcp(ipv4Hdr.getByteBuffer(), ipv4Hdr.getHeaderLength());
+        tcpHdr = new Tcp(ipv4Hdr.getByteBuffer(), ipv4Hdr, ipv4Hdr.getHeaderLength());
         ipHdr = ipv4Hdr;
         srcAddr = "192.168.86.169";
         dstAddr = "54.242.116.253";
@@ -155,7 +155,7 @@ public class TCPIPv4TestCase extends IPv4TestCase {
 
     @Test
     public void equalsAndHashCodeBis() {
-        Tcp tcpHdr2 = new Tcp(ipHdr.getByteBuffer(), ipHeaderLength);
+        Tcp tcpHdr2 = new Tcp(ipHdr.getByteBuffer(), ipHdr, ipHeaderLength);
         assertTrue(tcpHdr.equals(tcpHdr2));
         assertEquals(tcpHdr.hashCode(), tcpHdr2.hashCode());
     }

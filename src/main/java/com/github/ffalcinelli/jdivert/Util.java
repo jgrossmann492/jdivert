@@ -151,6 +151,62 @@ public class Util {
             buffer.position(position);
         }
     }
+    
+    
+
+    /**
+     * Calculates checksums assuming the checksum is a 16-bit header field.
+     * This method is generalized to work for IP, ICMP, UDP, and TCP packets
+     * given the proper parameters.
+     * Taken from <a href="https://github.com/mlaccetti/vserv-tcpip/blob/master/src/main/java/org/savarese/vserv/tcpip/IPPacket.java">https://github.com/mlaccetti/vserv-tcpip/blob/master/src/main/java/org/savarese/vserv/tcpip/IPPacket.java</a>
+     * 
+     * @param _data_	raw packet data
+     * @param startOffset	offset in the raw packet data to start
+     * @param checksumOffset	which checksum to calculate for
+     * @param length	total length of checksum data from startOffset
+     * @param virtualHeaderTotal	value taken by calculating virtual header for udp or tcp checksums
+     * @return value of the computed checksum
+     */
+    public static int computeChecksumLocal(byte[] _data_,
+    								int startOffset,
+                                    int checksumOffset,
+                                    int length,
+                                    int virtualHeaderTotal) {
+      int total = 0;
+      int i = startOffset;
+      int imax = checksumOffset;
+
+      while (i < imax) {
+        total += (((_data_[i++] & 0xff) << 8) | (_data_[i++] & 0xff));
+      }
+
+      // Skip existing checksum.
+      i = checksumOffset + 2;
+
+      imax = length - (length % 2);
+
+      while (i < imax) {
+        total += (((_data_[i++] & 0xff) << 8) | (_data_[i++] & 0xff));
+      }
+
+      if (i < length) {
+        total += ((_data_[i] & 0xff) << 8);
+      }
+
+      total += virtualHeaderTotal;
+
+      // Fold to 16 bits
+      while ((total & 0xffff0000) != 0) {
+        total = (total & 0xffff) + (total >>> 16);
+      }
+
+      total = (~total & 0xffff);
+
+      _data_[checksumOffset] = (byte) (total >> 8);
+      _data_[checksumOffset + 1] = (byte) (total & 0xff);
+      
+      return total;
+    }
 
     /**
      * Convert a short into its unsigned representation as int.

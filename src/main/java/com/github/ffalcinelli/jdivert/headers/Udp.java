@@ -19,6 +19,8 @@ package com.github.ffalcinelli.jdivert.headers;
 
 import java.nio.ByteBuffer;
 
+import com.github.ffalcinelli.jdivert.Util;
+
 import static com.github.ffalcinelli.jdivert.Util.printHexBinary;
 import static com.github.ffalcinelli.jdivert.Util.unsigned;
 
@@ -27,8 +29,12 @@ import static com.github.ffalcinelli.jdivert.Util.unsigned;
  */
 public class Udp extends Transport {
 
-    public Udp(ByteBuffer raw, int start) {
-        super(raw, start);
+    public Udp(ByteBuffer raw, Ip ipHdr, int start, boolean duplicateBuffer) {
+        super(raw, ipHdr, start, duplicateBuffer);
+    }
+    
+    public Udp(ByteBuffer raw, Ip ipHdr, int start) {
+        super(raw, ipHdr, start, false);
     }
 
     public int getLength() {
@@ -70,4 +76,9 @@ public class Udp extends Transport {
                 , printHexBinary(getData())
         );
     }
+
+    @Override
+   	public void calculateChecksum() {
+   		Util.computeChecksumLocal(raw.array(), start, start+6, raw.capacity(), ipHdr.getVirtualHeaderTotal());
+   	}
 }

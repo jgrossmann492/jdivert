@@ -46,16 +46,47 @@ public interface WinDivertDLL extends Library {
             HANDLE handle,
             Pointer pPacket,
             int packetLen,
+            IntByReference recvLen,
+            Pointer pAddr
+    );
+    
+    BOOL WinDivertRecvEx(
+            HANDLE handle,
+            Pointer pPacket,
+            int packetLen,
+            IntByReference recvLen,
+            long flags,
             Pointer pAddr,
-            IntByReference recvLen
+            IntByReference addrLen,
+            Pointer overlapped
     );
 
     BOOL WinDivertSend(
             HANDLE handle,
             Pointer pPacket,
             int packetLen,
+            IntByReference sendLen,
+            Pointer pAddr
+    );
+    
+    BOOL WinDivertSendEx(
+            HANDLE handle,
+            Pointer pPacket,
+            int packetLen,
+            IntByReference sendLen,
+            long flags,
             Pointer pAddr,
-            IntByReference sendLen
+            int addrLen,
+            Pointer overlapped
+    );
+    
+    BOOL WinDivertShutdown(
+    		HANDLE handle,
+    		int how
+    );
+    
+    BOOL WinDivertClose(
+            HANDLE handle
     );
 
     BOOL WinDivertSetParam(
@@ -68,13 +99,10 @@ public interface WinDivertDLL extends Library {
             int param,
             LongByReference pValue);
 
-    BOOL WinDivertClose(
-            HANDLE handle
-    );
-
-    int WinDivertHelperCalcChecksums(
+    BOOL WinDivertHelperCalcChecksums(
             Pointer pPacket,
             int packetLen,
+            Pointer pAddr,
             long flags
     );
 }

@@ -24,10 +24,14 @@ import static com.github.ffalcinelli.jdivert.Util.unsigned;
 /**
  * Created by fabio on 25/10/2016.
  */
-public class Icmp extends Header {
+public abstract class Icmp extends Header {
 
+    public Icmp(ByteBuffer raw, int start, boolean duplicateBuffer) {
+        super(raw, start, duplicateBuffer);
+    }
+    
     public Icmp(ByteBuffer raw, int start) {
-        super(raw, start);
+        super(raw, start, false);
     }
 
     public byte getType() {

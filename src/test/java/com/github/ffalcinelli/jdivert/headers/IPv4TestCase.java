@@ -53,20 +53,20 @@ public abstract class IPv4TestCase extends IPTestCase {
 
     @Test
     public void nextHeaderProtocolBis() {
-        assertEquals(ipHdr.getNextHeaderProtocol(), ipv4Hdr.getProtocol());
+        assertEquals(ipHdr.getNextHeaderProtocol(), ipv4Hdr.getNextHeaderProtocol());
     }
 
     @Test
     public void protocol() {
-        assertEquals(protocol, ipv4Hdr.getProtocol());
+        assertEquals(protocol, ipv4Hdr.getNextHeaderProtocol());
         ipv4Hdr.setProtocol(ROUTING);
-        assertEquals(ROUTING, ipv4Hdr.getProtocol());
+        assertEquals(ROUTING, ipv4Hdr.getNextHeaderProtocol());
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    /*@Test(expected = IllegalArgumentException.class)
     public void illegalProtocol() {
         ipv4Hdr.setProtocol(Enums.Protocol.fromValue(11));
-    }
+    }*/
 
     @Test
     public void headerLengthBis() {
